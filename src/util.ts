@@ -7,6 +7,7 @@ export interface Config {
   github_token: string;
   github_ref: string;
   github_repository: string;
+  input_server_url?: string;
   // user provided
   input_name?: string;
   input_tag_name?: string;
@@ -48,6 +49,14 @@ export const releaseBody = (config: Config): string | undefined => {
     }
   }
   return config.input_body;
+};
+
+export const resolveApiBaseUrl = (serverUrl: string, apiVersion: 'v1' | 'v3'): string => {
+  const normalized = serverUrl.trim().replace(/\/$/, '');
+  if (/\/api\/v[13]$/.test(normalized)) {
+    return normalized;
+  }
+  return `${normalized}/api/${apiVersion}`;
 };
 
 type Env = { [key: string]: string | undefined };
@@ -99,6 +108,7 @@ export const parseConfig = (env: Env): Config => {
     github_token: parseToken(env),
     github_ref: env.GITHUB_REF || '',
     github_repository: env.INPUT_REPOSITORY || env.GITHUB_REPOSITORY || '',
+    input_server_url: env.INPUT_SERVER_URL?.trim().replace(/\/$/, '') || undefined,
     input_name: env.INPUT_NAME,
     input_tag_name: normalizeTagName(env.INPUT_TAG_NAME?.trim()),
     input_body: env.INPUT_BODY,

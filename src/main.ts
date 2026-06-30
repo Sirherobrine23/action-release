@@ -1,8 +1,9 @@
 import { setFailed, setOutput } from '@actions/core';
 import { getOctokit } from '@actions/github';
-import { GitHubReleaser, release, finalizeRelease, upload, listReleaseAssets } from './github';
-import { isTag, parseConfig, paths, unmatchedPatterns, uploadUrl } from './util';
-
+import * as github from './github';
+import * as gitea from './gitea';
+import { finalizeRelease, listReleaseAssets, release, upload, Releaser } from './releases';
+import { isTag, parseConfig, paths, resolveApiBaseUrl, unmatchedPatterns, uploadUrl } from './util';
 import { env } from 'process';
 
 async function run() {
@@ -25,34 +26,57 @@ async function run() {
       }
     }
 
-    // const oktokit = GitHub.plugin(
-    //   require("@octokit/plugin-throttling"),
-    //   require("@octokit/plugin-retry")
-    // );
+    const isGitea = await gitea.IsGitea(config);
+    const gh = isGitea
+      ? undefined
+      : getOctokit(config.github_token, {
+          ...(config.input_server_url
+            ? { baseUrl: resolveApiBaseUrl(config.input_server_url, 'v3') }
+            : {}),
+          throttle: {
+            onRateLimit: (retryAfter, options) => {
+              console.warn(`Request quota exhausted for request ${options.method} ${options.url}`);
+              if (options.request.retryCount === 0) {
+                console.log(`Retrying after ${retryAfter} seconds!`);
+                return true;
+              }
+            },
+            onAbuseLimit: (retryAfter, options) => {
+              console.warn(`Abuse detected for request ${options.method} ${options.url}`);
+            },
+          },
+        });
 
-    const gh = getOctokit(config.github_token, {
-      //new oktokit(
-      throttle: {
-        onRateLimit: (retryAfter, options) => {
-          console.warn(`Request quota exhausted for request ${options.method} ${options.url}`);
-          if (options.request.retryCount === 0) {
-            // only retries once
-            console.log(`Retrying after ${retryAfter} seconds!`);
-            return true;
-          }
-        },
-        onAbuseLimit: (retryAfter, options) => {
-          // does not retry, only logs a warning
-          console.warn(`Abuse detected for request ${options.method} ${options.url}`);
-        },
-      },
-    });
-    //);
-    const releaser = new GitHubReleaser(gh);
-    const releaseResult = await release(config, releaser);
+    const releaser: Releaser = isGitea
+      ? new gitea.GiteaReleaser(config)
+      : new github.GitHubReleaser(gh!);
+    const releaseConfig = isGitea
+      ? {
+          ...config,
+          input_generate_release_notes: false,
+          input_discussion_category_name: undefined,
+          input_make_latest: undefined,
+          input_previous_tag: undefined,
+        }
+      : config;
+
+    if (isGitea) {
+      if (config.input_generate_release_notes) {
+        console.warn(`⚠️ generate_release_notes is ignored on Gitea.`);
+      }
+      if (config.input_discussion_category_name) {
+        console.warn(`⚠️ discussion_category_name is ignored on Gitea.`);
+      }
+      if (config.input_make_latest) {
+        console.warn(`⚠️ make_latest is ignored on Gitea.`);
+      }
+    }
+
+    const releaseResult = await release(releaseConfig, releaser);
     let rel = releaseResult.release;
     const releaseWasCreated = releaseResult.created;
     let uploadedAssetIds: Set<number> = new Set();
+
     if (config.input_files && config.input_files.length > 0) {
       const files = paths(config.input_files, config.input_working_directory);
       if (files.length == 0) {
@@ -65,7 +89,13 @@ async function run() {
       const currentAssets = rel.assets;
 
       const uploadFile = async (path: string) => {
-        const json = await upload(config, releaser, uploadUrl(rel.upload_url), path, currentAssets);
+        const json = await upload(
+          releaseConfig,
+          releaser,
+          uploadUrl(rel.upload_url),
+          path,
+          currentAssets,
+        );
         return json ? (json.id as number) : undefined;
       };
 
@@ -83,15 +113,13 @@ async function run() {
     }
 
     console.log('Finalizing release...');
-    rel = await finalizeRelease(config, releaser, rel, releaseWasCreated);
+    rel = await finalizeRelease(releaseConfig, releaser, rel, releaseWasCreated);
 
-    // Draft releases use temporary "untagged-..." URLs for assets.
-    // URLs will be changed to correct ones once the release is published.
     console.log('Getting assets list...');
     {
       let assets: any[] = [];
       if (uploadedAssetIds.size > 0) {
-        const updatedAssets = await listReleaseAssets(config, releaser, rel);
+        const updatedAssets = await listReleaseAssets(releaseConfig, releaser, rel);
         assets = updatedAssets
           .filter((a) => uploadedAssetIds.has(a.id))
           .map((a) => {
@@ -106,7 +134,7 @@ async function run() {
     setOutput('url', rel.html_url);
     setOutput('id', rel.id.toString());
     setOutput('upload_url', rel.upload_url);
-  } catch (error) {
+  } catch (error: any) {
     setFailed(error.message);
   }
 }

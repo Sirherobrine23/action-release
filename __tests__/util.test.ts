@@ -178,6 +178,7 @@ describe('util', () => {
       github_ref: '',
       github_repository: '',
       github_token: '',
+      input_server_url: undefined,
       input_working_directory: undefined,
       input_append_body: false,
       input_body: undefined,
@@ -256,6 +257,18 @@ describe('util', () => {
         {
           ...baseParsedConfig,
           input_previous_tag: 'v1.2.3',
+        },
+      );
+    });
+
+    it('supports an explicit server_url override', () => {
+      assert.deepStrictEqual(
+        parseConfig({
+          INPUT_SERVER_URL: 'https://gitea.example.com/',
+        }),
+        {
+          ...baseParsedConfig,
+          input_server_url: 'https://gitea.example.com',
         },
       );
     });

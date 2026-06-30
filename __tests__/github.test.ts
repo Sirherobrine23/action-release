@@ -125,7 +125,7 @@ describe('github', () => {
       try {
         await findTagFromReleases(releaser, owner, repo, 'v1.0.0');
         assert.fail('Expected an error to be thrown');
-      } catch (error) {
+      } catch (error: any) {
         assert.strictEqual(error.status, 500);
       }
     });
@@ -681,6 +681,8 @@ describe('github', () => {
         createRelease: () => Promise.reject('Not implemented'),
         updateRelease: () => Promise.reject('Not implemented'),
         finalizeRelease: () => Promise.reject('Not implemented'),
+        deleteRelease: () => Promise.reject('Not implemented'),
+        updateReleaseAsset: () => Promise.reject('Not implemented'),
         allReleases: async function* () {
           throw new Error('Not implemented');
         },
@@ -706,6 +708,7 @@ describe('github', () => {
       expect(deleteReleaseAsset).toHaveBeenCalledWith({
         owner: 'owner',
         repo: 'repo',
+        release_id: 1,
         asset_id: 99,
       });
       expect(uploadReleaseAsset).toHaveBeenCalledTimes(2);
@@ -815,11 +818,13 @@ describe('github', () => {
         expect(deleteReleaseAsset).toHaveBeenCalledWith({
           owner: 'owner',
           repo: 'repo',
+          release_id: 1,
           asset_id: 99,
         });
         expect(updateReleaseAsset).toHaveBeenCalledWith({
           owner: 'owner',
           repo: 'repo',
+          release_id: 1,
           asset_id: 123,
           name: 'default.config',
           label: '.config',
@@ -883,6 +888,7 @@ describe('github', () => {
         deleteReleaseAsset: () => Promise.reject('Not implemented'),
         deleteRelease: () => Promise.reject('Not implemented'),
         uploadReleaseAsset: () => Promise.reject('Not implemented'),
+        updateReleaseAsset: () => Promise.reject('Not implemented'),
       } as const;
 
       const result = await release(config, mockReleaser, 2);
@@ -1236,6 +1242,7 @@ describe('github', () => {
         expect(updateReleaseAssetSpy).toHaveBeenNthCalledWith(1, {
           owner: 'owner',
           repo: 'repo',
+          release_id: 1,
           asset_id: 1,
           name: 'default.config',
           label: '.config',
@@ -1248,6 +1255,7 @@ describe('github', () => {
         expect(updateReleaseAssetSpy).toHaveBeenNthCalledWith(2, {
           owner: 'owner',
           repo: 'repo',
+          release_id: 1,
           asset_id: 2,
           name: 'default.config',
           label: '.config',
